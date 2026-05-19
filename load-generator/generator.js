@@ -2,13 +2,14 @@
 // generator.js — Generador de Carga Estocástico
 // ============================================================
 // Simula tráfico realista hacia el backend enviando latencias
-// con distribución normal N(250ms, 45ms) y picos aleatorios.
+// con perfiles configurables por sesión.
 //
 // Uso:
-//   node generator.js                  → 120 segundos, sesión exp_A_baseline
-//   node generator.js --duration 30    → 30 segundos
-//   node generator.js --session exp_B  → sesión personalizada
-//   node generator.js --rate 20        → 20 req/seg
+//   node generator.js                              → defaults
+//   node generator.js --session exp_B --duration 60
+//   node generator.js --base-latency 150 --spike-rate 0.1
+//   node generator.js --jitter 30 --error-rate 0.02
+//   node generator.js --spike-multiplier 15 --rate 20
 //
 // Cada petición envía POST /api/logs al backend con:
 //   { session_id, timestamp, latency_ms, status_code, endpoint }
@@ -26,39 +27,35 @@ function getArg(name, defaultVal) {
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : defaultVal;
 }
 
-const SESSION_ID = getArg('session', 'exp_A_baseline');
-const DURATION   = parseInt(getArg('duration', '120'));   // segundos
-const RATE       = parseInt(getArg('rate', '10'));         // requests/segundo
-const SPIKE_PROB = 0.05;                                   // 5% probabilidad de spike
+const SESSION_ID      = getArg('session', 'exp_A_baseline');
+const DURATION        = parseInt(getArg('duration', '120'));          // segundos
+const RATE            = parseInt(getArg('rate', '10'));               // requests/segundo
+const BASE_LATENCY    = parseInt(getArg('base-latency', '200'));     // ms
+const SPIKE_RATE      = parseFloat(getArg('spike-rate', '0.05'));    // 0-1
+const SPIKE_MULT      = parseFloat(getArg('spike-multiplier', '10'));
+const ERROR_RATE      = parseFloat(getArg('error-rate', '0'));       // 0-1
+const JITTER          = parseInt(getArg('jitter', '50'));             // ±ms
 
 // Endpoints simulados (para variedad en los logs)
 const ENDPOINTS = ['/api/users', '/api/products', '/api/orders', '/api/auth', '/api/search'];
 
-// ─── GENERADOR NORMAL (Box-Muller) ───────────────────────────
-// Genera números aleatorios con distribución normal N(mean, std).
-// Usa la transformación de Box-Muller: convierte 2 uniformes en 2 normales.
-function randomNormal(mean, std) {
-  const u1 = Math.random();
-  const u2 = Math.random();
-  const z  = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return mean + std * z;
-}
-
-// ─── GENERAR UNA LATENCIA REALISTA ────────────────────────────
-// Base: N(250, 45) → media 250ms, std 45ms
-// Spike: 5% probabilidad de latencia entre 1500-5000ms
+// ─── GENERAR UNA LATENCIA CONFIGURABLE ────────────────────────
+// Error simulado: latencia extrema (base * multiplier * 1-2x)
+// Spike: latencia alta (base * multiplier * 0.5-1.5x)
+// Normal: base ± jitter gaussiano aproximado
 // Clamp: mínimo 10ms (latencias negativas no existen)
 function generateLatency() {
-  const isSpike = Math.random() < SPIKE_PROB;
-
-  if (isSpike) {
-    // Spike: latencia alta entre 1500-5000ms
-    return Math.round(1500 + Math.random() * 3500);
+  // Error simulado
+  if (Math.random() < ERROR_RATE) {
+    return Math.round(BASE_LATENCY * SPIKE_MULT * (1 + Math.random()));
   }
-
-  // Normal: N(250, 45), mínimo 10ms
-  const latency = randomNormal(250, 45);
-  return Math.round(Math.max(10, latency));
+  // Spike de latencia
+  if (Math.random() < SPIKE_RATE) {
+    return Math.round(BASE_LATENCY * SPIKE_MULT * (0.5 + Math.random()));
+  }
+  // Latencia normal con jitter gaussiano aproximado
+  const gaussJitter = (Math.random() + Math.random() + Math.random() - 1.5) * JITTER;
+  return Math.max(10, Math.round(BASE_LATENCY + gaussJitter));
 }
 
 // ─── GENERAR STATUS CODE ──────────────────────────────────────
@@ -100,12 +97,17 @@ async function run() {
   console.log('═══════════════════════════════════════════════');
   console.log('  ⚡ LOAD GENERATOR — Análisis Estocástico');
   console.log('═══════════════════════════════════════════════');
-  console.log(`  Sesión:    ${SESSION_ID}`);
-  console.log(`  Duración:  ${DURATION}s`);
-  console.log(`  Rate:      ${RATE} req/s`);
-  console.log(`  Total:     ${totalRequests} requests`);
-  console.log(`  Target:    ${API_URL}`);
-  console.log(`  Spikes:    ${SPIKE_PROB * 100}% probabilidad`);
+  console.log(`  Sesión:        ${SESSION_ID}`);
+  console.log(`  Duración:      ${DURATION}s`);
+  console.log(`  Rate:          ${RATE} req/s`);
+  console.log(`  Total:         ${totalRequests} requests`);
+  console.log(`  Target:        ${API_URL}`);
+  console.log('───────────────────────────────────────────────');
+  console.log(`  Base Latency:  ${BASE_LATENCY}ms`);
+  console.log(`  Spike Rate:    ${(SPIKE_RATE * 100).toFixed(0)}%`);
+  console.log(`  Spike Mult:    ${SPIKE_MULT}x`);
+  console.log(`  Jitter:        ±${JITTER}ms`);
+  console.log(`  Error Rate:    ${(ERROR_RATE * 100).toFixed(0)}%`);
   console.log('═══════════════════════════════════════════════');
   console.log('');
 
