@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Activity, BarChart3, FlaskConical, Gauge, RefreshCw, ChevronDown } from 'lucide-react';
+import { Activity, BarChart3, FlaskConical, Gauge, RefreshCw, ChevronDown, Server } from 'lucide-react';
 import { S } from './styles';
 import { fetchStats, fetchTests, fetchSessions, runHypothesisTest } from './api';
 import type { StatsData, HypTest, Session } from './api';
@@ -8,8 +8,9 @@ import { OverviewTab } from './OverviewTab';
 import { PoissonTab } from './PoissonTab';
 import { IntervalosTab } from './IntervalosTab';
 import { ABTestsTab } from './ABTestsTab';
+import { RecursosTab } from './RecursosTab';
 
-type Tab = 'overview' | 'poisson' | 'intervalos' | 'abtests';
+type Tab = 'overview' | 'poisson' | 'intervalos' | 'abtests' | 'recursos';
 
 const Orbs = () => (
   <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
@@ -30,6 +31,7 @@ const TABS: { id: Tab; label: string; icon: any }[] = [
   { id: 'poisson',    label: 'Poisson',    icon: BarChart3 },
   { id: 'intervalos', label: 'Intervalos', icon: Activity },
   { id: 'abtests',    label: 'A/B Tests',  icon: FlaskConical },
+  { id: 'recursos',   label: 'Recursos',   icon: Server },
 ];
 
 export default function App() {
@@ -196,6 +198,7 @@ export default function App() {
                 }}
               />
             )}
+            {tab === 'recursos'   && <RecursosTab stats={stats} sessions={sessions} />}
           </motion.div>
         </AnimatePresence>
       </main>
