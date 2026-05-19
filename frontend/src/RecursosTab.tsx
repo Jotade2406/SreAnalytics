@@ -19,16 +19,19 @@ const estimarPerfil = (sessionId: string) => {
   if (sessionId.includes('hotfix') || sessionId.includes('optimized')) {
     return { latencia: '~120-150ms', riesgo: 'Bajo', ram: '512MB', cpu: '1 core', color: '#10b981' };
   } else if (sessionId.includes('degraded') || sessionId.includes('spike')) {
-    return { latencia: '~1500-2000ms', riesgo: 'Cr\u00EDtico', ram: '4GB+', cpu: '4+ cores', color: '#ef4444' };
+    return { latencia: '~1500-2000ms', riesgo: 'Crítico', ram: '4GB+', cpu: '4+ cores', color: '#ef4444' };
   } else {
     return { latencia: '~400-500ms', riesgo: 'Moderado', ram: '1-2GB', cpu: '2 cores', color: '#f59e0b' };
   }
 };
 
 export const RecursosTab = ({ stats, sessions }: Props) => {
+  const puntoQuiebre = stats ? (stats.lambda < 1 ? 'N/A' : Math.round(stats.lambda * 1.5) + ' inc/win') : '';
+  const descQuiebre = stats ? (stats.lambda < 1 ? 'Sistema en zona óptima, sin punto de quiebre' : 'λ donde P(colapso) supera 30%') : '';
+
   const kpis = stats ? [
-    { label: 'Throughput \u00D3ptimo', value: Math.round((stats.ciLower / stats.mean) * 10) + ' req/s', desc: 'Requests/seg dentro del IC 99%', color: '#10b981', icon: Zap },
-    { label: 'Punto de Quiebre \u03BB', value: Math.round(stats.lambda * 1.5) + ' inc/win', desc: '\u03BB donde P(colapso) supera 30%', color: '#f59e0b', icon: AlertTriangle },
+    { label: 'Throughput Óptimo', value: Math.round((stats.ciLower / stats.mean) * 10) + ' req/s', desc: 'Requests/seg dentro del IC 99%', color: '#10b981', icon: Zap },
+    { label: 'Punto de Quiebre λ', value: puntoQuiebre, desc: descQuiebre, color: '#f59e0b', icon: AlertTriangle },
     { label: 'Eficiencia del Sistema', value: Math.round((stats.ciLower / stats.ciUpper) * 100) + '%', desc: 'Ratio IC_lower / IC_upper', color: '#6366f1', icon: Cpu },
   ] : null;
 
@@ -36,7 +39,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
     const carga = i + 1;
     const lambdaEstimado = (stats.lambda / 10) * carga;
     const riesgo = Math.min(99, Math.round((1 - Math.exp(-lambdaEstimado / 10)) * 100));
-    const zona = riesgo < 10 ? 'Seguro' : riesgo < 30 ? 'Advertencia' : 'Cr\u00EDtico';
+    const zona = riesgo < 10 ? 'Seguro' : riesgo < 30 ? 'Advertencia' : 'Crítico';
     return { carga: carga + ' r/s', riesgo, zona };
   }) : null;
 
@@ -47,21 +50,21 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
         color: '#86efac',
         bg: 'rgba(16,185,129,0.08)',
         border: 'rgba(16,185,129,0.25)',
-        text: `El sistema opera dentro de par\u00E1metros \u00F3ptimos. Con \u03BB=${stats.lambda.toFixed(2)} y un riesgo de colapso del ${stats.risk}%, la infraestructura actual es estad\u00EDsticamente suficiente. No se requieren cambios de hardware.`,
+        text: `El sistema opera dentro de parámetros óptimos. Con λ=${stats.lambda.toFixed(2)} y un riesgo de colapso del ${stats.risk}%, la infraestructura actual es estadísticamente suficiente. No se requieren cambios de hardware.`,
       };
     } else if (stats.lambda >= 10 && stats.lambda < 15) {
       return {
         color: '#fcd34d',
         bg: 'rgba(245,158,11,0.08)',
         border: 'rgba(245,158,11,0.25)',
-        text: `El sistema est\u00E1 en zona de advertencia (\u03BB=${stats.lambda.toFixed(2)}). Se recomienda escalar horizontalmente un 30% la capacidad actual para mantener el riesgo de colapso por debajo del 10%.`,
+        text: `El sistema está en zona de advertencia (λ=${stats.lambda.toFixed(2)}). Se recomienda escalar horizontalmente un 30% la capacidad actual para mantener el riesgo de colapso por debajo del 10%.`,
       };
     } else {
       return {
         color: '#fca5a5',
         bg: 'rgba(239,68,68,0.08)',
         border: 'rgba(239,68,68,0.25)',
-        text: `\u26A0 ALERTA CR\u00CDTICA: \u03BB=${stats.lambda.toFixed(2)} supera el umbral m\u00E1ximo. El sistema requiere intervenci\u00F3n inmediata. Escalar capacidad 2x o implementar rate limiting para reducir \u03BB por debajo de 10.`,
+        text: `⚠ ALERTA CRÍTICA: λ=${stats.lambda.toFixed(2)} supera el umbral máximo. El sistema requiere intervención inmediata. Escalar capacidad 2x o implementar rate limiting para reducir λ por debajo de 10.`,
       };
     }
   };
@@ -72,7 +75,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
     <div>
       {/* Header */}
       <div style={S.formula}>
-        {"Capacidad \u00F3ptima: \u03BB_max = IC_lower / t_response | Riesgo aceptable: P(X\u2265k) < 0.10"}
+        {"Capacidad óptima: λ_max = IC_lower / t_response | Riesgo aceptable: P(X≥k) < 0.10"}
       </div>
 
       {/* KPI Cards */}
@@ -100,7 +103,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
         style={{ ...S.card, marginBottom: 24 }}>
         <h3 style={{ ...S.grad as any, fontSize: '1.1rem', marginBottom: 4 }}>Curva de Riesgo vs Carga</h3>
-        <p style={{ color: '#64748b', fontSize: 12, marginBottom: 20 }}>Probabilidad de colapso seg\u00FAn nivel de tr\u00E1fico</p>
+        <p style={{ color: '#64748b', fontSize: 12, marginBottom: 20 }}>Probabilidad de colapso según nivel de tráfico</p>
         {curvaRiesgo ? (
           <div style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -117,7 +120,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
                 <YAxis {...chartAxis} domain={[0, 100]} tickFormatter={(v: number) => v + '%'} />
                 <Tooltip contentStyle={S.ttip} formatter={(val: number) => [val + '%', 'Riesgo']} />
                 <ReferenceLine y={10} stroke="#10b981" strokeDasharray="4 4" label={{ value: 'Seguro', fill: '#10b981', fontSize: 11, position: 'right' }} />
-                <ReferenceLine y={30} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'L\u00EDmite', fill: '#f59e0b', fontSize: 11, position: 'right' }} />
+                <ReferenceLine y={30} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Límite', fill: '#f59e0b', fontSize: 11, position: 'right' }} />
                 <Area type="monotone" dataKey="riesgo" stroke="#ef4444" fill="url(#gRiesgo)" strokeWidth={2.5} name="Riesgo" />
               </AreaChart>
             </ResponsiveContainer>
@@ -129,7 +132,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
         style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '20px 24px 0' }}>
-          <h3 style={{ ...S.grad as any, fontSize: '1.1rem' }}>Comparativa de Eficiencia por Sesi\u00F3n</h3>
+          <h3 style={{ ...S.grad as any, fontSize: '1.1rem' }}>Comparativa de Eficiencia por Sesión</h3>
         </div>
         {sessions.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center' }}><Skel h={120} /></div>
@@ -137,7 +140,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 12 }}>
             <thead>
               <tr style={{ background: 'rgba(99,102,241,0.1)', borderBottom: '1px solid #1e293b' }}>
-                {['Sesi\u00F3n', 'Latencia Estimada', 'Nivel de Riesgo', 'RAM Recomendada', 'CPU Recomendada', 'Estado'].map(h => (
+                {['Sesión', 'Latencia Estimada', 'Nivel de Riesgo', 'RAM Recomendada', 'CPU Recomendada', 'Estado'].map(h => (
                   <th key={h} style={{ padding: '14px 14px', textAlign: 'left', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>{h}</th>
                 ))}
               </tr>
@@ -169,7 +172,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
         )}
       </motion.div>
 
-      {/* Recomendaci\u00F3n Final */}
+      {/* Recomendación Final */}
       {stats && reco && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
           style={{
@@ -179,7 +182,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
           }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <Target size={20} style={{ color: '#6366f1' }} />
-            <h3 style={{ ...S.grad as any, fontSize: '1.1rem' }}>{'\uD83C\uDFAF'} Recomendaci\u00F3n del Analizador Estoc\u00E1stico</h3>
+            <h3 style={{ ...S.grad as any, fontSize: '1.1rem' }}>🎯 Recomendación del Analizador Estocástico</h3>
           </div>
 
           <p style={{ color: reco.color, fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
@@ -188,7 +191,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
             <div style={S.stat}>
-              <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 4 }}>{'\u03BB'} Actual</p>
+              <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 4 }}>λ Actual</p>
               <p style={{ color: '#a5b4fc', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{stats.lambda.toFixed(2)}</p>
             </div>
             <div style={S.stat}>
