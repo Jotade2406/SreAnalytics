@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { CheckCircle, XCircle, Loader2, FlaskConical, TrendingUp, TrendingDown, Minus, Download } from 'lucide-react';
 import { S, chartAxis, chartGrid } from './styles';
 import type { HypTest, Session } from './api';
+import * as XLSX from 'xlsx';
 
 interface Props {
   tests: HypTest[];
@@ -16,26 +17,36 @@ const Skel = ({ h = 40 }: { h?: number }) => (
     style={{ width: '100%', height: h, background: 'rgba(99,102,241,0.12)', borderRadius: 8 }} />
 );
 
-const exportCSV = (tests: HypTest[]) => {
-  const header = 'Sesi\u00F3n_A,Sesi\u00F3n_B,N_A,N_B,Media_A_ms,Media_B_ms,T_Estad\u00EDstico,P_Valor,Rechaza_H0,Mejora_Pct,Conclusi\u00F3n';
-  const rows = tests.map(t => {
-    const mejora = t.mean_a !== 0 ? ((t.mean_a - t.mean_b) / t.mean_a * 100).toFixed(2) : '0';
-    const conclusion = `"${(t.conclusion || '').replace(/"/g, '""')}"`;
-    return [
-      t.session_a, t.session_b, t.n_a, t.n_b,
-      Number(t.mean_a).toFixed(2), Number(t.mean_b).toFixed(2),
-      Number(t.t_statistic).toFixed(4), Number(t.p_value).toFixed(6),
-      t.reject_null ? 'S\u00ED' : 'No', mejora, conclusion
-    ].join(',');
-  });
-  const csvContent = [header, ...rows].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `ab_tests_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+const exportarExcel = (tests: HypTest[]) => {
+  const datos = tests.map(t => ({
+    'Sesi\u00F3n A': t.session_a,
+    'Sesi\u00F3n B': t.session_b,
+    'N (A)': t.n_a,
+    'N (B)': t.n_b,
+    'Media A (ms)': Number(t.mean_a).toFixed(2),
+    'Media B (ms)': Number(t.mean_b).toFixed(2),
+    'T-Estad\u00EDstico': Number(t.t_statistic).toFixed(4),
+    'P-Valor': Number(t.p_value).toFixed(6),
+    'Rechaza H\u2080': t.reject_null ? 'S\u00ED' : 'No',
+    'Resultado': t.reject_null ? 'SIGNIFICATIVO' : 'NO SIGNIFICATIVO',
+    'Conclusi\u00F3n': t.conclusion,
+  }));
+
+  const hoja = XLSX.utils.json_to_sheet(datos);
+
+  const anchos = Object.keys(datos[0]).map(key => ({
+    wch: Math.min(
+      Math.max(key.length, ...datos.map(d => String((d as any)[key]).length)) + 2,
+      key === 'Conclusi\u00F3n' ? 80 : 40
+    )
+  }));
+  hoja['!cols'] = anchos;
+
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, 'A-B Tests');
+
+  const fecha = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(libro, `ab_tests_${fecha}.xlsx`);
 };
 
 export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
@@ -159,9 +170,9 @@ export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
         style={{ ...S.card, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
         {tests.length > 0 && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 14px 0 14px' }}>
-            <motion.button id="btn-export-csv" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => exportCSV(tests)}
+            <motion.button id="btn-export-excel" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => exportarExcel(tests)}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#3b82f6)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 10px rgba(99,102,241,0.3)' }}>
-              <Download size={14} />Exportar CSV
+              <Download size={14} />Exportar Excel
             </motion.button>
           </div>
         )}
