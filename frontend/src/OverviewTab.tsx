@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { AlertTriangle, Zap, TrendingUp, Shield, Server } from 'lucide-react';
+import { AlertTriangle, Zap, TrendingUp, Shield, Server, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import { S, chartAxis, chartGrid } from './styles';
 import type { StatsData } from './api';
 
@@ -30,13 +30,31 @@ const Skel = ({ h = 40 }: { h?: number }) => (
     style={{ width: '100%', height: h, background: 'rgba(99,102,241,0.12)', borderRadius: 8 }} />
 );
 
+const getAlert = (lambda: number, riskPct: number) => {
+  const risk = riskPct / 100;
+  if (lambda >= 15 || risk >= 0.30) return {
+    bg: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)', color: '#fca5a5', iconColor: '#ef4444', Icon: ShieldX,
+    text: `\u{1F6A8} Riesgo Cr\u00EDtico \u2014 \u03BB=${lambda.toFixed(2)} supera el umbral m\u00E1ximo. Probabilidad de fallo en cascada: ${(risk * 100).toFixed(1)}%. Acci\u00F3n inmediata requerida.`
+  };
+  if (lambda >= 10 || risk >= 0.15) return {
+    bg: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.35)', color: '#fcd34d', iconColor: '#f59e0b', Icon: ShieldAlert,
+    text: `\u26A0\uFE0F Advertencia \u2014 \u03BB=${lambda.toFixed(2)} en zona de alerta. Monitorear de cerca. P(fallo) = ${(risk * 100).toFixed(1)}%.`
+  };
+  return {
+    bg: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.35)', color: '#86efac', iconColor: '#10b981', Icon: ShieldCheck,
+    text: `\u2705 Sistema Estable \u2014 \u03BB=${lambda.toFixed(2)} dentro de par\u00E1metros normales. Riesgo de fallo: ${(risk * 100).toFixed(1)}%.`
+  };
+};
+
 export const OverviewTab = ({ stats }: { stats: StatsData | null }) => {
   const kpis = stats ? [
-    { label: 'Mean Latency', value: `${stats.mean.toFixed(1)}ms`, delta: stats.mean < 300 ? '✓ Normal' : '↑ High', good: stats.mean < 300, color: '#3b82f6', icon: Zap },
-    { label: 'P99 / CI Upper', value: `${stats.ciUpper.toFixed(1)}ms`, delta: `±${((stats.ciUpper - stats.mean)).toFixed(1)}ms`, good: true, color: '#f59e0b', icon: TrendingUp },
+    { label: 'Mean Latency', value: `${stats.mean.toFixed(1)}ms`, delta: stats.mean < 300 ? '\u2713 Normal' : '\u2191 High', good: stats.mean < 300, color: '#3b82f6', icon: Zap },
+    { label: 'P99 / CI Upper', value: `${stats.ciUpper.toFixed(1)}ms`, delta: `\u00B1${((stats.ciUpper - stats.mean)).toFixed(1)}ms`, good: true, color: '#f59e0b', icon: TrendingUp },
     { label: 'Poisson Risk', value: `${stats.risk}%`, delta: stats.risk < 10 ? 'Low' : stats.risk < 20 ? 'Med' : 'High', good: stats.risk < 20, color: stats.risk >= 20 ? '#ef4444' : '#10b981', icon: Shield },
     { label: 'Sample Size', value: stats.sampleSize.toLocaleString(), delta: `n=${stats.sampleSize}`, good: true, color: '#8b5cf6', icon: Server },
   ] : null;
+
+  const alert = stats ? getAlert(stats.lambda, stats.risk) : null;
 
   return (
     <div>
@@ -59,6 +77,14 @@ export const OverviewTab = ({ stats }: { stats: StatsData | null }) => {
           </motion.div>
         )) : Array.from({ length: 4 }).map((_, i) => <div key={i} style={{ ...S.card }}><Skel h={80} /></div>)}
       </div>
+
+      {stats && alert && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+          style={{ background: alert.bg, border: alert.border, borderRadius: 12, padding: '14px 20px', marginBottom: 24, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12, color: alert.color }}>
+          <alert.Icon size={22} style={{ color: alert.iconColor, flexShrink: 0 }} />
+          <span>{alert.text}</span>
+        </motion.div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={S.card}>
@@ -101,10 +127,10 @@ export const OverviewTab = ({ stats }: { stats: StatsData | null }) => {
             <AlertTriangle size={28} color="#ef4444" />
             <div style={{ flex: 1 }}>
               <p style={{ fontWeight: 800, color: '#fca5a5', fontSize: '1rem' }}>
-                {stats.anomalies.length} anomalías detectadas fuera del IC 99% — λ={stats.lambda.toFixed(2)}
+                {stats.anomalies.length} anomal\u00EDas detectadas fuera del IC 99% \u2014 \u03BB={stats.lambda.toFixed(2)}
               </p>
               <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>
-                Session: {stats.sessionId} · Última actualización: {new Date(stats.calculatedAt).toLocaleTimeString()}
+                Session: {stats.sessionId} \u00B7 \u00DAltima actualizaci\u00F3n: {new Date(stats.calculatedAt).toLocaleTimeString()}
               </p>
             </div>
             <span style={S.badge('#ef4444') as any}>LIVE</span>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Activity, BarChart3, FlaskConical, Gauge, RefreshCw } from 'lucide-react';
+import { Activity, BarChart3, FlaskConical, Gauge, RefreshCw, ChevronDown } from 'lucide-react';
 import { S } from './styles';
-import { fetchStats, fetchTests, fetchSessions } from './api';
+import { fetchStats, fetchTests, fetchSessions, runHypothesisTest } from './api';
 import type { StatsData, HypTest, Session } from './api';
 import { OverviewTab } from './OverviewTab';
 import { PoissonTab } from './PoissonTab';
@@ -34,7 +34,7 @@ const TABS: { id: Tab; label: string; icon: any }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('overview');
-  const [sessionId] = useState('exp_A_baseline');
+  const [sessionId, setSessionId] = useState('');
   const [stats, setStats]     = useState<StatsData | null>(null);
   const [tests, setTests]     = useState<HypTest[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -43,6 +43,7 @@ export default function App() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const loadStats = useCallback(async () => {
+    if (!sessionId) return;
     try {
       const data = await fetchStats(sessionId);
       if (data && !('error' in data)) {
@@ -59,18 +60,54 @@ export default function App() {
     }
   }, [sessionId]);
 
+  // Load sessions on mount, set first session as default
+  useEffect(() => {
+    fetchSessions()
+      .then(s => {
+        setSessions(s);
+        if (s.length > 0 && !sessionId) {
+          setSessionId(s[0].session_id);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Poll stats every 10 s
   useEffect(() => {
+    if (!sessionId) return;
+    setLoading(true);
     loadStats();
     const iv = setInterval(loadStats, 10_000);
     return () => clearInterval(iv);
   }, [loadStats]);
 
-  // One-time fetches
+  // Fetch tests on mount
   useEffect(() => {
     fetchTests().then(setTests).catch(() => {});
-    fetchSessions().then(setSessions).catch(() => {});
   }, []);
+
+  // Re-fetch sessions periodically (in case load-generator creates new ones)
+  useEffect(() => {
+    const iv = setInterval(() => {
+      fetchSessions().then(setSessions).catch(() => {});
+    }, 15_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const selectStyle: React.CSSProperties = {
+    appearance: 'none',
+    background: 'rgba(15,23,42,0.8)',
+    border: '1px solid rgba(99,102,241,0.35)',
+    borderRadius: 8,
+    padding: '6px 32px 6px 12px',
+    color: '#a5b4fc',
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: 'monospace',
+    cursor: 'pointer',
+    outline: 'none',
+    minWidth: 180,
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#020817', color: '#e2e8f0', fontFamily: "'Inter',system-ui,sans-serif", position: 'relative' }}>
@@ -81,12 +118,28 @@ export default function App() {
       <div style={S.topbar}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <h1 style={{ ...S.grad as any, fontSize: '1.4rem', letterSpacing: '-0.02em' }}>SRE Analytics</h1>
-          {sessions.length > 0 && (
-            <span style={{ color: '#64748b', fontSize: 12 }}>
-              {sessions.length} session{sessions.length !== 1 ? 's' : ''}
-            </span>
-          )}
+
+          {/* Session Selector */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <select
+              id="session-selector"
+              value={sessionId}
+              onChange={e => setSessionId(e.target.value)}
+              style={selectStyle}
+            >
+              {sessions.length === 0 && (
+                <option value="">Loading sessions…</option>
+              )}
+              {sessions.map(s => (
+                <option key={s.session_id} value={s.session_id}>
+                  {s.session_id} ({s.log_count} logs)
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} style={{ position: 'absolute', right: 10, pointerEvents: 'none', color: '#6366f1' }} />
+          </div>
         </div>
+
         <div style={{ display: 'flex', gap: 8 }}>
           {TABS.map(t => (
             <motion.button key={t.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
@@ -95,6 +148,7 @@ export default function App() {
             </motion.button>
           ))}
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {loading && !stats
             ? <span style={S.badge('#f59e0b') as any}>LOADING...</span>
@@ -130,7 +184,18 @@ export default function App() {
             {tab === 'overview'   && <OverviewTab   stats={stats} />}
             {tab === 'poisson'    && <PoissonTab    stats={stats} />}
             {tab === 'intervalos' && <IntervalosTab stats={stats} />}
-            {tab === 'abtests'    && <ABTestsTab    tests={tests} />}
+            {tab === 'abtests'    && (
+              <ABTestsTab
+                tests={tests}
+                sessions={sessions}
+                onRunTest={async (a, b) => {
+                  const result = await runHypothesisTest(a, b);
+                  const updated = await fetchTests();
+                  setTests(updated);
+                  return result;
+                }}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>

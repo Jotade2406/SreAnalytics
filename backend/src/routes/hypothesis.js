@@ -22,16 +22,17 @@ router.post('/', async (req, res) => {
     )
 
     if (logsA.length < 2 || logsB.length < 2) {
-      return res.status(400).json({ error: 'Datos insuficientes para ambas sesiones', countA: logsA.length, countB: logsB.length })
+      return res.status(400).json({ error: 'Datos insuficientes', countA: logsA.length, countB: logsB.length })
     }
 
     const result = welchTTest(logsA, logsB)
 
-    // Save to DB
     await query(
       `INSERT INTO hypothesis_tests (session_a, session_b, mean_a, mean_b, std_a, std_b, n_a, n_b, t_statistic, degrees_of_freedom, p_value, reject_null, conclusion)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [session_a, session_b, result.meanA, result.meanB, result.stdA, result.stdB, result.nA, result.nB, result.tStatistic, result.degreesOfFreedom, result.pValue, result.rejectNull, result.conclusion]
+      [session_a, session_b, result.meanA, result.meanB, result.stdA, result.stdB,
+       result.nA, result.nB, result.tStatistic, result.degreesOfFreedom,
+       result.pValue, result.rejectNull, result.conclusion]
     )
 
     res.json(result)
@@ -41,10 +42,17 @@ router.post('/', async (req, res) => {
   }
 })
 
-// GET /api/hypothesis-tests
-router.get('s', async (req, res) => {
+// GET /api/hypothesis-test/history
+router.get('/history', async (req, res) => {
   try {
-    const rows = await query('SELECT * FROM hypothesis_tests ORDER BY tested_at DESC LIMIT 20')
+    const rows = await query(`
+      SELECT * FROM hypothesis_tests
+      WHERE id IN (
+        SELECT MAX(id) FROM hypothesis_tests GROUP BY session_a, session_b
+      )
+      ORDER BY tested_at DESC
+      LIMIT 20
+    `)
     res.json({ tests: rows })
   } catch (err) {
     res.status(500).json({ error: err.message })

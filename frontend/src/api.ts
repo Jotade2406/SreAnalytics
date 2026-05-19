@@ -18,5 +18,13 @@ export interface HypTest {
 export interface Session { session_id: string; log_count: number; last_activity: string }
 
 export const fetchStats  = (sid: string)  => fetch(`${BASE}/api/stats/latest?session_id=${sid}`).then(r => r.json()) as Promise<StatsData>
-export const fetchTests  = ()              => fetch(`${BASE}/api/hypothesis-tests`).then(r => r.json()).then(d => d.tests as HypTest[])
+export const fetchTests  = ()              => fetch(`${BASE}/api/hypothesis-test/history`).then(r => r.json()).then(d => d.tests as HypTest[])
 export const fetchSessions = ()            => fetch(`${BASE}/api/sessions`).then(r => r.json()).then(d => d.sessions as Session[])
+
+// Trigger a new A/B hypothesis test
+export const runHypothesisTest = (session_a: string, session_b: string) =>
+  fetch(`${BASE}/api/hypothesis-test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_a, session_b }),
+  }).then(r => r.json()) as Promise<HypTest>
