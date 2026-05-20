@@ -185,7 +185,7 @@ export default function App() {
             exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.25 }}>
             {tab === 'overview'   && <OverviewTab   stats={stats} />}
             {tab === 'poisson'    && <PoissonTab    stats={stats} />}
-            {tab === 'intervalos' && <IntervalosTab stats={stats} />}
+            {tab === 'intervalos' && <IntervalosTab stats={stats} sessions={sessions} />}
             {tab === 'abtests'    && (
               <ABTestsTab
                 tests={tests}
