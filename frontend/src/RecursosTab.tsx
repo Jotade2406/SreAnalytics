@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Zap, AlertTriangle, Cpu, Target } from 'lucide-react';
 import { S, chartAxis, chartGrid } from './styles';
 import type { StatsData, Session } from './api';
+import { getSessionMeta, ROLE_LABELS } from './sessionMeta';
 
 interface Props {
   stats: StatsData | null;
@@ -16,12 +17,18 @@ const Skel = ({ h = 40 }: { h?: number }) => (
 );
 
 const estimarPerfil = (sessionId: string) => {
-  if (sessionId.includes('hotfix') || sessionId.includes('optimized')) {
-    return { latencia: '~120-150ms', riesgo: 'Bajo', ram: '512MB', cpu: '1 core', color: '#10b981' };
-  } else if (sessionId.includes('degraded') || sessionId.includes('spike')) {
-    return { latencia: '~1500-2000ms', riesgo: 'Crítico', ram: '4GB+', cpu: '4+ cores', color: '#ef4444' };
-  } else {
-    return { latencia: '~400-500ms', riesgo: 'Moderado', ram: '1-2GB', cpu: '2 cores', color: '#f59e0b' };
+  const meta = getSessionMeta(sessionId);
+  switch (meta.role) {
+    case 'optimized':
+      return { latencia: '~150-200ms', riesgo: 'Bajo',     ram: '512 MB',  cpu: '1 core',     color: '#10b981', meta };
+    case 'hotfix':
+      return { latencia: '~200-300ms', riesgo: 'Moderado', ram: '1 GB',    cpu: '1-2 cores',  color: '#f59e0b', meta };
+    case 'degraded':
+      return { latencia: '~800-2000ms', riesgo: 'Crítico', ram: '4 GB+',   cpu: '4+ cores',   color: '#ef4444', meta };
+    case 'spike':
+      return { latencia: '~1500-5000ms', riesgo: 'Crítico', ram: '4 GB+',  cpu: '4+ cores',   color: '#8b5cf6', meta };
+    default:
+      return { latencia: '~200-400ms', riesgo: 'Moderado', ram: '1-2 GB',  cpu: '2 cores',    color: '#3b82f6', meta };
   }
 };
 
@@ -75,7 +82,7 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
     <div>
       {/* Header */}
       <div style={S.formula}>
-        {"Capacidad óptima: λ_max = IC_lower / t_response | Riesgo aceptable: P(X≥k) < 0.10"}
+        {"Pilar 4 · Optimización de Recursos  |  λ_max = IC_lower / t_response  |  Riesgo aceptable: P(X≥k) < 0.10"}
       </div>
 
       {/* KPI Cards */}
@@ -151,7 +158,11 @@ export const RecursosTab = ({ stats, sessions }: Props) => {
                 return (
                   <motion.tr key={s.session_id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
                     style={{ borderBottom: '1px solid #1e293b' }}>
-                    <td style={{ padding: '12px 14px', fontFamily: 'monospace', color: '#a5b4fc', fontWeight: 600 }}>{s.session_id}</td>
+                    <td style={{ padding: '12px 14px', fontWeight: 600 }}>
+                      <span style={{ color: perfil.color, marginRight: 6 }}>{perfil.meta.emoji}</span>
+                      <span style={{ fontFamily: 'monospace', color: '#a5b4fc' }}>{perfil.meta.label}</span>
+                      <span style={{ ...S.badge(perfil.color) as any, marginLeft: 8, fontSize: 9 }}>{ROLE_LABELS[perfil.meta.role]}</span>
+                    </td>
                     <td style={{ padding: '12px 14px', fontFamily: 'monospace', color: '#e2e8f0' }}>{perfil.latencia}</td>
                     <td style={{ padding: '12px 14px' }}>
                       <span style={{ ...S.badge(perfil.color) as any }}>{perfil.riesgo}</span>

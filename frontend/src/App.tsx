@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Activity, BarChart3, FlaskConical, Gauge, RefreshCw, ChevronDown, Server } from 'lucide-react';
 import { S } from './styles';
 import { fetchStats, fetchTests, fetchSessions, runHypothesisTest } from './api';
+import { getSessionMeta } from './sessionMeta';
 import type { StatsData, HypTest, Session } from './api';
 import { OverviewTab } from './OverviewTab';
 import { PoissonTab } from './PoissonTab';
@@ -62,13 +63,14 @@ export default function App() {
     }
   }, [sessionId]);
 
-  // Load sessions on mount, set first session as default
+  // Load sessions on mount — filter out garbage sessions (< 10 logs)
   useEffect(() => {
     fetchSessions()
       .then(s => {
-        setSessions(s);
-        if (s.length > 0 && !sessionId) {
-          setSessionId(s[0].session_id);
+        const valid = s.filter(sess => sess.log_count >= 10);
+        setSessions(valid);
+        if (valid.length > 0 && !sessionId) {
+          setSessionId(valid[0].session_id);
         }
       })
       .catch(() => {});
@@ -91,7 +93,7 @@ export default function App() {
   // Re-fetch sessions periodically (in case load-generator creates new ones)
   useEffect(() => {
     const iv = setInterval(() => {
-      fetchSessions().then(setSessions).catch(() => {});
+      fetchSessions().then(s => setSessions(s.filter(sess => sess.log_count >= 10))).catch(() => {});
     }, 15_000);
     return () => clearInterval(iv);
   }, []);
@@ -132,11 +134,14 @@ export default function App() {
               {sessions.length === 0 && (
                 <option value="">Loading sessions…</option>
               )}
-              {sessions.map(s => (
-                <option key={s.session_id} value={s.session_id}>
-                  {s.session_id} ({s.log_count} logs)
-                </option>
-              ))}
+              {sessions.map(s => {
+                const meta = getSessionMeta(s.session_id);
+                return (
+                  <option key={s.session_id} value={s.session_id}>
+                    {meta.emoji} {meta.label} ({s.log_count} logs)
+                  </option>
+                );
+              })}
             </select>
             <ChevronDown size={14} style={{ position: 'absolute', right: 10, pointerEvents: 'none', color: '#6366f1' }} />
           </div>
@@ -183,8 +188,8 @@ export default function App() {
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.25 }}>
-            {tab === 'overview'   && <OverviewTab   stats={stats} />}
-            {tab === 'poisson'    && <PoissonTab    stats={stats} />}
+            {tab === 'overview'   && <OverviewTab   stats={stats} sessionId={sessionId} />}
+            {tab === 'poisson'    && <PoissonTab    stats={stats} sessionId={sessionId} />}
             {tab === 'intervalos' && <IntervalosTab stats={stats} sessions={sessions} />}
             {tab === 'abtests'    && (
               <ABTestsTab

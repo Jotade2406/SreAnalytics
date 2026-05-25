@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { AlertTriangle, Zap, TrendingUp, Shield, Server, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import { S, chartAxis, chartGrid } from './styles';
 import type { StatsData } from './api';
+import { getSessionMeta, SESSION_META, ROLE_LABELS } from './sessionMeta';
 
 const RiskGauge = ({ value, label, color }: { value: number; label: string; color: string }) => {
   const r = 42, circ = 2 * Math.PI * r, dash = circ * value / 100 * 0.75;
@@ -46,7 +47,9 @@ const getAlert = (lambda: number, riskPct: number) => {
   };
 };
 
-export const OverviewTab = ({ stats }: { stats: StatsData | null }) => {
+export const OverviewTab = ({ stats, sessionId }: { stats: StatsData | null; sessionId: string }) => {
+  const meta = getSessionMeta(sessionId);
+  const compareWith = meta.compareWith ? SESSION_META[meta.compareWith] : null;
   const kpis = stats ? [
     { label: 'Mean Latency', value: `${stats.mean.toFixed(1)}ms`, delta: stats.mean < 300 ? '✓ Normal' : '↑ High', good: stats.mean < 300, color: '#3b82f6', icon: Zap },
     { label: 'P99 / CI Upper', value: `${stats.ciUpper.toFixed(1)}ms`, delta: `±${((stats.ciUpper - stats.mean)).toFixed(1)}ms`, good: true, color: '#f59e0b', icon: TrendingUp },
@@ -58,6 +61,49 @@ export const OverviewTab = ({ stats }: { stats: StatsData | null }) => {
 
   return (
     <div>
+      {/* Scenario Context Card */}
+      {sessionId && (
+        <motion.div
+          key={sessionId}
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          style={{
+            background: `${meta.color}0D`,
+            border: `1px solid ${meta.color}33`,
+            borderRadius: 12,
+            padding: '14px 20px',
+            marginBottom: 20,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 14,
+          }}
+        >
+          <span style={{ fontSize: 26, lineHeight: 1.2 }}>{meta.emoji}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+              <span style={{ color: meta.color, fontWeight: 800, fontSize: 14 }}>{meta.label}</span>
+              <span style={S.badge(meta.color) as any}>{ROLE_LABELS[meta.role]}</span>
+              <span style={{ color: '#475569', fontSize: 12 }}>{meta.scenario}</span>
+            </div>
+            {meta.narrative && (
+              <p style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.6, margin: 0 }}>{meta.narrative}</p>
+            )}
+          </div>
+          {compareWith && (
+            <div style={{ flexShrink: 0, textAlign: 'right' }}>
+              <p style={{ color: '#475569', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                Comparar con
+              </p>
+              <p style={{ color: '#6366f1', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {compareWith.emoji} {compareWith.label}
+              </p>
+              <p style={{ color: '#475569', fontSize: 10 }}>pestaña A/B Tests</p>
+            </div>
+          )}
+        </motion.div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 20, marginBottom: 24 }}>
         {kpis ? kpis.map((k, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}

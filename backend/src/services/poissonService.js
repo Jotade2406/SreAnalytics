@@ -1,10 +1,13 @@
 /**
  * Poisson distribution service.
  * Groups latencies by minute, counts critical events (> threshold),
- * computes lambda and full PMF k=0..10.
+ * computes lambda and full PMF.
+ *
+ * Fix: collapseProb = 1 - P(X<5).  The old approach summed P(5..10)
+ * which collapses to ~0 when lambda is large (e.g. degraded/spike
+ * sessions where lambda >> 10), giving a false 0% risk reading.
  */
 export function calculatePoisson(latencies, threshold = 1500) {
-  // Group by minute buckets
   const buckets = {}
   for (const entry of latencies) {
     const ts = new Date(entry.timestamp || entry.t)
@@ -20,26 +23,38 @@ export function calculatePoisson(latencies, threshold = 1500) {
     ? counts.reduce((s, c) => s + c, 0) / counts.length
     : 0
 
-  // PMF using log to avoid overflow
-  const distribution = Array.from({ length: 11 }, (_, k) => {
-    let logP = -lambda + k * Math.log(lambda || 1e-10)
+  // Extend range so the chart is meaningful for high-lambda sessions.
+  // k=0..10 is fine for normal load; for degraded/spike we show up to
+  // ceil(lambda)+5 capped at 40 to keep the API response small.
+  const maxK = lambda <= 10 ? 10 : Math.min(40, Math.ceil(lambda) + 5)
+
+  // PMF using log-space arithmetic to avoid numeric overflow at large k/lambda
+  const pmf = (k) => {
+    if (lambda === 0) return k === 0 ? 1 : 0
+    let logP = -lambda + k * Math.log(lambda)
     for (let i = 1; i <= k; i++) logP -= Math.log(i)
-    const prob = lambda > 0 ? Math.exp(logP) : (k === 0 ? 1 : 0)
+    return Math.exp(logP)
+  }
+
+  const distribution = Array.from({ length: maxK + 1 }, (_, k) => {
+    const prob = parseFloat(pmf(k).toFixed(6))
     return {
       k,
-      prob: parseFloat(prob.toFixed(6)),
+      prob,
       pct: parseFloat((prob * 100).toFixed(2)),
       critical: k >= 5,
     }
   })
 
-  const collapseProb = distribution.filter(d => d.k >= 5).reduce((s, d) => s + d.prob, 0)
+  // P(X >= 5) = 1 - P(X <= 4)  — correct even when lambda >> 10
+  const probBelow5 = distribution.slice(0, 5).reduce((s, d) => s + d.prob, 0)
+  const collapseProb = parseFloat(Math.max(0, Math.min(1, 1 - probBelow5)).toFixed(8))
   const risk = parseFloat((collapseProb * 100).toFixed(1))
 
   return {
     lambda: parseFloat(lambda.toFixed(4)),
     risk,
-    collapseProb: parseFloat(collapseProb.toFixed(8)),
+    collapseProb,
     distribution,
   }
 }

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
+import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceArea, ResponsiveContainer } from 'recharts';
 import { S, chartAxis, chartGrid } from './styles';
 import { fetchStats } from './api';
 import type { StatsData, Session } from './api';
+import { getSessionMeta } from './sessionMeta';
 
 const Skel = ({ h = 40 }: { h?: number }) => (
   <motion.div animate={{ opacity: [0.3, 0.6, 0.3] }} transition={{ repeat: Infinity, duration: 1.5 }}
@@ -64,6 +65,16 @@ export const IntervalosTab = ({ stats, sessions }: Props) => {
   const margen95 = stats ? 1.960 * (stats.std / Math.sqrt(stats.sampleSize)) : 0;
   const margenNivel = margen;
 
+  // Serie temporal con upper/lower reemplazados por los valores dinámicos del slider
+  const timeSeriesDinamico = stats
+    ? stats.timeSeries.map(p => ({ ...p, upper: ciUpperDinamico, lower: ciLowerDinamico }))
+    : [];
+
+  // Anomalías recalculadas en base al nivel de confianza seleccionado
+  const anomaliasDinamicas = stats
+    ? stats.timeSeries.filter(p => p.latency < ciLowerDinamico || p.latency > ciUpperDinamico)
+    : [];
+
   const intervalos = stats ? [
     {
       nivel: '90%',
@@ -97,7 +108,6 @@ export const IntervalosTab = ({ stats, sessions }: Props) => {
     },
   ] : [];
 
-  const anomalias = stats ? stats.anomalies : [];
 
   // --- Fetch stats de todas las sesiones y recalcular con el nivel seleccionado ---
   const loadAllSessions = useCallback(async (currentNivel: number) => {
@@ -182,7 +192,7 @@ export const IntervalosTab = ({ stats, sessions }: Props) => {
   return (
     <div>
       <div style={S.formula}>
-        {`IC ${nivel}%: x\u0304 \u00B1 t_(\u03B1/2,n-1) \u00B7 (s/\u221An)  |  n=${stats?.sampleSize ?? '...'}, \u03B1=${(1 - nivel / 100).toFixed(2)}`}
+        {`Pilar 2 \u00B7 Detector de Anomal\u00EDas  |  IC ${nivel}%: x\u0304 \u00B1 t_(\u03B1/2,n-1) \u00B7 (s/\u221An)  |  n=${stats?.sampleSize ?? '...'}, \u03B1=${(1 - nivel / 100).toFixed(2)}`}
       </div>
 
       {/* --- KPI Cards --- */}
@@ -285,80 +295,98 @@ export const IntervalosTab = ({ stats, sessions }: Props) => {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} style={S.card}>
         <h3 style={{ ...S.grad as any, fontSize: '1.1rem', marginBottom: 4 }}>IC {nivel}% con Anomalías</h3>
 
-        {/* Leyenda visual del gráfico */}
-        <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94a3b8' }}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
-            Anomalía fuera del IC
+        {/* Leyenda compacta */}
+        <div style={{ display: 'flex', gap: 20, fontSize: 11, color: '#94a3b8', marginBottom: 8, flexWrap: 'wrap' }}>
+          <span>
+            <span style={{ color: '#ef4444', fontSize: 14 }}>●</span>
+            {' '}Anomalía fuera del IC
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94a3b8' }}>
-            <span style={{ width: 16, height: 2, background: '#f59e0b', display: 'inline-block', borderRadius: 1 }} />
-            Límite Superior IC {nivel}%
+          <span>
+            <span style={{ color: '#f59e0b' }}>— —</span>
+            {' '}Límite Superior
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94a3b8' }}>
-            <span style={{ width: 16, height: 2, background: '#10b981', display: 'inline-block', borderRadius: 1 }} />
-            Límite Inferior IC {nivel}%
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#94a3b8' }}>
-            <span style={{ width: 16, height: 2, background: '#6366f1', display: 'inline-block', borderRadius: 1 }} />
-            Media
+          <span>
+            <span style={{ color: '#10b981' }}>— —</span>
+            {' '}Límite Inferior
           </span>
         </div>
 
-        {/* Subtítulo actualizado con valores dinámicos */}
+        {/* Subtítulo dinámico */}
         <p style={{ color: '#64748b', fontSize: 12, marginBottom: 16 }}>
           {stats
-            ? `Límite Superior: ${ciUpperDinamico.toFixed(1)}ms | Media: ${stats.mean.toFixed(1)}ms | Límite Inferior: ${ciLowerDinamico.toFixed(1)}ms · ${anomalias.length} anomalías detectadas`
+            ? `IC ${nivel}% → [${ciLowerDinamico.toFixed(1)}ms, ${ciUpperDinamico.toFixed(1)}ms] · ${anomaliasDinamicas.length} anomalías detectadas`
             : '...'}
         </p>
 
         {stats ? (
           <div style={{ height: 320 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={stats.timeSeries}>
-                <defs>
-                  <linearGradient id="gCI2" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15} /><stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+              <ComposedChart data={timeSeriesDinamico} margin={{ top: 20, right: 20, left: 20, bottom: 5 }}>
                 <CartesianGrid {...chartGrid} />
                 <XAxis dataKey="t" {...chartAxis} />
                 <YAxis {...chartAxis} tickFormatter={(v: number) => v + 'ms'} domain={['auto', 'auto']} />
                 <Tooltip contentStyle={S.ttip} />
-                <Area type="monotone" dataKey="upper" stroke="#6366f1" fill="url(#gCI2)" strokeWidth={1.5} strokeDasharray="4 4" name="Upper CI" />
-                <Area type="monotone" dataKey="lower" stroke="#6366f1" fill="none" strokeWidth={1.5} strokeDasharray="4 4" name="Lower CI" />
 
-                {/* ReferenceLine etiquetadas con nivel dinámico */}
+                {/* Banda sombreada entre límite inferior y superior */}
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                {React.createElement(ReferenceArea as any, {
+                  y1: ciLowerDinamico,
+                  y2: ciUpperDinamico,
+                  fill: '#6366f1',
+                  fillOpacity: 0.08,
+                  stroke: 'none',
+                })}
+
+                {/* Línea límite superior */}
                 <ReferenceLine
                   y={ciUpperDinamico}
                   stroke="#f59e0b"
                   strokeDasharray="6 3"
                   strokeWidth={2}
-                  label={{ value: `IC ${nivel}% Superior: ${ciUpperDinamico.toFixed(1)}ms`, position: 'insideTopRight', fill: '#f59e0b', fontSize: 11 }}
+                  label={{
+                    value: `↑ Superior IC${nivel}%: ${ciUpperDinamico.toFixed(0)}ms`,
+                    position: 'insideTopLeft',
+                    fill: '#f59e0b',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    dx: 8,
+                    dy: -6,
+                  }}
                 />
+
+                {/* Línea límite inferior */}
                 <ReferenceLine
                   y={ciLowerDinamico}
                   stroke="#10b981"
                   strokeDasharray="6 3"
                   strokeWidth={2}
-                  label={{ value: `IC ${nivel}% Inferior: ${ciLowerDinamico.toFixed(1)}ms`, position: 'insideBottomRight', fill: '#10b981', fontSize: 11 }}
-                />
-                <ReferenceLine
-                  y={stats.mean}
-                  stroke="#6366f1"
-                  strokeDasharray="3 3"
-                  strokeWidth={1.5}
-                  label={{ value: `Media: ${stats.mean.toFixed(1)}ms`, position: 'insideTopLeft', fill: '#6366f1', fontSize: 11 }}
+                  label={{
+                    value: `↓ Inferior IC${nivel}%: ${ciLowerDinamico.toFixed(0)}ms`,
+                    position: 'insideBottomLeft',
+                    fill: '#10b981',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    dx: 8,
+                    dy: 6,
+                  }}
                 />
 
-                <Line type="monotone" dataKey="latency" stroke="#3b82f6" strokeWidth={2.5} name="Latency"
+                {/* Serie de latencia con puntos de anomalía dinámicos */}
+                <Line
+                  type="monotone"
+                  dataKey="latency"
+                  stroke="#3b82f6"
+                  strokeWidth={2.5}
+                  name="Latency"
                   dot={(props: any) => {
-                    const d = stats.timeSeries[props.index];
+                    const d = timeSeriesDinamico[props.index];
                     if (!d) return <React.Fragment key={props.index} />;
-                    return d.anomaly
+                    const isAnomaly = d.latency < ciLowerDinamico || d.latency > ciUpperDinamico;
+                    return isAnomaly
                       ? <circle key={props.index} cx={props.cx} cy={props.cy} r={6} fill="#ef4444" stroke="#ef444488" strokeWidth={3} />
                       : <circle key={props.index} cx={props.cx} cy={props.cy} r={2} fill="#3b82f6" />;
-                  }} />
+                  }}
+                />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -462,9 +490,15 @@ export const IntervalosTab = ({ stats, sessions }: Props) => {
                 </tr>
               </thead>
               <tbody>
-                {sessionStats.map((row, i) => (
+                {sessionStats.map((row, i) => {
+                  const m = getSessionMeta(row.sessionId);
+                  return (
                   <tr key={row.sessionId} style={{ borderBottom: '1px solid #1e293b', background: i % 2 === 0 ? 'rgba(99,102,241,0.03)' : 'transparent' }}>
-                    <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#a5b4fc', fontWeight: 600 }}>{row.sessionId}</td>
+                    <td style={{ padding: '10px 16px', fontWeight: 600 }}>
+                      <span style={{ color: m.color }}>{m.emoji}</span>
+                      {' '}
+                      <span style={{ fontFamily: 'monospace', color: '#a5b4fc' }}>{m.label}</span>
+                    </td>
                     <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#e2e8f0' }}>{row.mean.toFixed(2)} ms</td>
                     <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#94a3b8' }}>{row.std.toFixed(2)} ms</td>
                     <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#10b981' }}>{row.ciLower.toFixed(2)} ms</td>
@@ -489,7 +523,8 @@ export const IntervalosTab = ({ stats, sessions }: Props) => {
                       </span>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -500,36 +535,39 @@ export const IntervalosTab = ({ stats, sessions }: Props) => {
         )}
       </motion.div>
 
-      {/* --- Tabla de anomalías existente --- */}
-      {stats && stats.anomalies.length > 0 && (
+      {/* --- Tabla de anomalías dinámica (se actualiza con el slider) --- */}
+      {stats && anomaliasDinamicas.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
           style={{ ...S.card, marginTop: 20, padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e293b', background: 'rgba(239,68,68,0.06)' }}>
             <h4 style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.9rem' }}>
-              Anomalías detectadas ({stats.anomalies.length})
+              Anomalías al IC {nivel}% — {anomaliasDinamicas.length} puntos fuera del intervalo
             </h4>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: 'rgba(99,102,241,0.08)' }}>
-                  {['Tiempo', 'Latency', 'CI Lower', 'CI Upper', '\u0394 Desvío'].map(h => (
+                  {['Tiempo', 'Latency', 'Inf. ' + nivel + '%', 'Sup. ' + nivel + '%', '\u0394 Desvío'].map(h => (
                     <th key={h} style={{ padding: '10px 16px', textAlign: 'left', color: '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {stats.anomalies.map((a, i) => (
+                {anomaliasDinamicas.map((a, i) => {
+                  const dev = a.latency > ciUpperDinamico ? a.latency - ciUpperDinamico : ciLowerDinamico - a.latency;
+                  return (
                   <tr key={i} style={{ borderBottom: '1px solid #1e293b', background: i % 2 === 0 ? 'rgba(239,68,68,0.03)' : 'transparent' }}>
                     <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#94a3b8' }}>{a.t}</td>
                     <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#ef4444', fontWeight: 700 }}>{a.latency}ms</td>
-                    <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#64748b' }}>{a.lower.toFixed(1)}ms</td>
-                    <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#64748b' }}>{a.upper.toFixed(1)}ms</td>
+                    <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#64748b' }}>{ciLowerDinamico.toFixed(1)}ms</td>
+                    <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#64748b' }}>{ciUpperDinamico.toFixed(1)}ms</td>
                     <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#f59e0b', fontWeight: 600 }}>
-                      {a.latency > a.upper ? '+' : ''}{(a.latency - (a.latency > a.upper ? a.upper : a.lower)).toFixed(1)}ms
+                      {a.latency > ciUpperDinamico ? '+' : '-'}{dev.toFixed(1)}ms
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

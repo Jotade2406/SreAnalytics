@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { CheckCircle, XCircle, Loader2, FlaskConical, TrendingUp, TrendingDown, Minus, Download } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, FlaskConical, TrendingUp, TrendingDown, Minus, Download, Zap } from 'lucide-react';
 import { S, chartAxis, chartGrid } from './styles';
 import type { HypTest, Session } from './api';
+import { getSessionMeta, SUGGESTED_COMPARISONS } from './sessionMeta';
 import * as XLSX from 'xlsx';
 
 interface Props {
@@ -53,12 +54,40 @@ export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
   const [sessionA, setSessionA] = useState('');
   const [sessionB, setSessionB] = useState('');
   const [running, setRunning] = useState(false);
+  const [quickRunning, setQuickRunning] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<HypTest | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
+  const availableSessions = new Set(sessions.map(s => s.session_id));
+  const validSuggestions = SUGGESTED_COMPARISONS.filter(
+    s => availableSessions.has(s.a) && availableSessions.has(s.b)
+  );
+
+  const handleQuickTest = async (a: string, b: string, key: string) => {
+    setQuickRunning(key);
+    setRunError(null);
+    setLastResult(null);
+    setSessionA(a);
+    setSessionB(b);
+    try {
+      const result = await onRunTest(a, b);
+      const normalized: HypTest = {
+        ...result,
+        t_statistic: result.t_statistic ?? (result as any).tStatistic,
+        p_value: result.p_value ?? (result as any).pValue,
+        mean_a: result.mean_a ?? (result as any).meanA,
+        mean_b: result.mean_b ?? (result as any).meanB,
+        reject_null: result.reject_null ?? (result as any).rejectNull,
+      };
+      setLastResult(normalized);
+    } catch { setRunError('Error ejecutando el test sugerido'); }
+    finally { setQuickRunning(null); }
+  };
+
   const sigCount = tests.filter(t => t.reject_null).length;
   const chartData = tests.map(t => ({ name: `${t.session_a} vs ${t.session_b}`, meanA: t.mean_a, meanB: t.mean_b }));
-  const latestTest = tests.length > 0 ? tests[tests.length - 1] : null;
+  // Prioriza el test recién ejecutado en esta sesión; si no, el último del historial
+  const displayTest = lastResult ?? (tests.length > 0 ? tests[tests.length - 1] : null);
 
   const handleRunTest = async () => {
     if (!sessionA || !sessionB) return;
@@ -85,13 +114,82 @@ export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
     fontFamily: 'monospace', cursor: 'pointer', outline: 'none', flex: 1, minWidth: 0,
   };
 
-  const improvement = latestTest ? ((latestTest.mean_a - latestTest.mean_b) / latestTest.mean_a * 100) : 0;
+  const improvement = displayTest ? ((displayTest.mean_a - displayTest.mean_b) / displayTest.mean_a * 100) : 0;
 
   return (
     <div>
       <div style={S.formula}>
-        {"Welch\u2019s t-test: t = (x\u0304\u2081 - x\u0304\u2082) / \u221A(s\u2081\u00B2/n\u2081 + s\u2082\u00B2/n\u2082)  |  \u03B1 = 0.05"}
+        {"Pilar 3 \u00B7 Prueba Cient\u00EDfica del C\u00F3digo  |  Welch\u2019s t-test: t = (x\u0304\u2081 - x\u0304\u2082) / \u221A(s\u2081\u00B2/n\u2081 + s\u2082\u00B2/n\u2082)  |  \u03B1 = 0.05"}
       </div>
+
+      {/* Suggested Comparisons */}
+      {validSuggestions.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+          style={{ ...S.card, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <Zap size={16} style={{ color: '#6366f1' }} />
+            <h3 style={{ color: '#e2e8f0', fontSize: '0.95rem', fontWeight: 700 }}>Comparaciones Sugeridas</h3>
+            <span style={{ color: '#475569', fontSize: 12 }}>— ejecuta tests con un clic</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            {validSuggestions.map((s) => {
+              const metaA = getSessionMeta(s.a);
+              const metaB = getSessionMeta(s.b);
+              const key = `${s.a}__${s.b}`;
+              const isRunning = quickRunning === key;
+              return (
+                <div key={key} style={{
+                  background: `${s.color}0A`,
+                  border: `1px solid ${s.color}33`,
+                  borderRadius: 10,
+                  padding: '14px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, display: 'inline-block', flexShrink: 0 }} />
+                    <span style={{ color: s.color, fontWeight: 800, fontSize: 13 }}>{s.title}</span>
+                  </div>
+                  <p style={{ color: '#94a3b8', fontSize: 11, lineHeight: 1.5, margin: 0 }}>{s.description}</p>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ ...S.badge('#6366f1') as any, fontSize: 10 }}>{metaA.emoji} {metaA.label}</span>
+                    <span style={{ color: '#475569', fontSize: 11, alignSelf: 'center' }}>vs</span>
+                    <span style={{ ...S.badge('#6366f1') as any, fontSize: 10 }}>{metaB.emoji} {metaB.label}</span>
+                  </div>
+                  <p style={{ color: '#475569', fontSize: 10, fontStyle: 'italic', margin: 0 }}>{s.expectation}</p>
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => handleQuickTest(s.a, s.b, key)}
+                    disabled={isRunning || !!quickRunning}
+                    style={{
+                      marginTop: 4,
+                      padding: '7px 14px',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: isRunning ? 'rgba(99,102,241,0.3)' : `linear-gradient(135deg, ${s.color}CC, ${s.color}88)`,
+                      color: '#fff',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: isRunning ? 'wait' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {isRunning
+                      ? (<><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}><Loader2 size={12} /></motion.div>Ejecutando…</>)
+                      : (<><FlaskConical size={12} />Ejecutar Test</>)
+                    }
+                  </motion.button>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Run New Test Panel */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ ...S.card, marginBottom: 24 }}>
@@ -104,14 +202,20 @@ export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
             <label style={{ display: 'block', color: '#64748b', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 6 }}>Session A (Control)</label>
             <select id="select-session-a" value={sessionA} onChange={e => { setSessionA(e.target.value); setRunError(null); }} style={selectStyle}>
               <option value="">Select session\u2026</option>
-              {sessions.map(s => <option key={s.session_id} value={s.session_id}>{s.session_id} ({s.log_count} logs)</option>)}
+              {sessions.map(s => {
+                const m = getSessionMeta(s.session_id);
+                return <option key={s.session_id} value={s.session_id}>{m.emoji} {m.label} ({s.log_count} logs)</option>;
+              })}
             </select>
           </div>
           <div style={{ flex: 1, minWidth: 180 }}>
             <label style={{ display: 'block', color: '#64748b', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 6 }}>Session B (Variant)</label>
             <select id="select-session-b" value={sessionB} onChange={e => { setSessionB(e.target.value); setRunError(null); }} style={selectStyle}>
               <option value="">Select session\u2026</option>
-              {sessions.map(s => <option key={s.session_id} value={s.session_id}>{s.session_id} ({s.log_count} logs)</option>)}
+              {sessions.map(s => {
+                const m = getSessionMeta(s.session_id);
+                return <option key={s.session_id} value={s.session_id}>{m.emoji} {m.label} ({s.log_count} logs)</option>;
+              })}
             </select>
           </div>
           <motion.button id="btn-run-test" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={handleRunTest}
@@ -194,8 +298,14 @@ export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
               {tests.map((t, i) => (
                 <motion.tr key={t.id ?? i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }}
                   style={{ borderBottom: '1px solid #1e293b', background: t.reject_null ? 'rgba(16,185,129,0.04)' : 'transparent' }}>
-                  <td style={{ padding: '12px 14px', fontFamily: 'monospace', color: '#a5b4fc', fontWeight: 600 }}>{t.session_a}</td>
-                  <td style={{ padding: '12px 14px', fontFamily: 'monospace', color: '#a5b4fc', fontWeight: 600 }}>{t.session_b}</td>
+                  <td style={{ padding: '12px 14px', fontWeight: 600 }}>
+                    <span style={{ color: getSessionMeta(t.session_a).color }}>{getSessionMeta(t.session_a).emoji}</span>
+                    {' '}<span style={{ fontFamily: 'monospace', color: '#a5b4fc', fontSize: 12 }}>{getSessionMeta(t.session_a).label}</span>
+                  </td>
+                  <td style={{ padding: '12px 14px', fontWeight: 600 }}>
+                    <span style={{ color: getSessionMeta(t.session_b).color }}>{getSessionMeta(t.session_b).emoji}</span>
+                    {' '}<span style={{ fontFamily: 'monospace', color: '#a5b4fc', fontSize: 12 }}>{getSessionMeta(t.session_b).label}</span>
+                  </td>
                   <td style={{ padding: '12px 14px', color: '#64748b', fontFamily: 'monospace' }}>{t.n_a}</td>
                   <td style={{ padding: '12px 14px', color: '#64748b', fontFamily: 'monospace' }}>{t.n_b}</td>
                   <td style={{ padding: '12px 14px', fontFamily: 'monospace', color: '#e2e8f0' }}>{Number(t.mean_a).toFixed(2)}ms</td>
@@ -237,27 +347,27 @@ export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
       )}
 
       {/* Last Test Interpretation */}
-      {latestTest && (
+      {displayTest && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          style={{ ...S.card, background: latestTest.reject_null ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)', border: `1px solid ${latestTest.reject_null ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
+          style={{ ...S.card, background: displayTest.reject_null ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)', border: `1px solid ${displayTest.reject_null ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            {latestTest.reject_null ? <CheckCircle size={20} style={{ color: '#10b981' }} /> : <XCircle size={20} style={{ color: '#f59e0b' }} />}
+            {displayTest.reject_null ? <CheckCircle size={20} style={{ color: '#10b981' }} /> : <XCircle size={20} style={{ color: '#f59e0b' }} />}
             <h3 style={{ ...S.grad as any, fontSize: '1.1rem' }}>Last Test Interpretation</h3>
-            <span style={{ ...S.badge(latestTest.reject_null ? '#10b981' : '#f59e0b') as any, marginLeft: 'auto' }}>{latestTest.reject_null ? 'STATISTICALLY SIGNIFICANT' : 'NOT SIGNIFICANT'}</span>
+            <span style={{ ...S.badge(displayTest.reject_null ? '#10b981' : '#f59e0b') as any, marginLeft: 'auto' }}>{displayTest.reject_null ? 'STATISTICALLY SIGNIFICANT' : 'NOT SIGNIFICANT'}</span>
           </div>
-          <p style={{ color: latestTest.reject_null ? '#86efac' : '#fcd34d', fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
-            {latestTest.reject_null
-              ? `\u2705 The difference between sessions "${latestTest.session_a}" and "${latestTest.session_b}" is statistically significant (p < 0.05). This means the observed performance change is real and NOT due to random noise. The null hypothesis (H\u2080: \u03BC\u2081 = \u03BC\u2082) is rejected.`
-              : `\u26A0\uFE0F The difference between sessions "${latestTest.session_a}" and "${latestTest.session_b}" is NOT statistically significant (p \u2265 0.05). The observed variation is likely just statistical noise. We fail to reject the null hypothesis (H\u2080: \u03BC\u2081 = \u03BC\u2082).`}
+          <p style={{ color: displayTest.reject_null ? '#86efac' : '#fcd34d', fontSize: 14, lineHeight: 1.7, marginBottom: 20 }}>
+            {displayTest.reject_null
+              ? `\u2705 The difference between sessions "${displayTest.session_a}" and "${displayTest.session_b}" is statistically significant (p < 0.05). This means the observed performance change is real and NOT due to random noise. The null hypothesis (H\u2080: \u03BC\u2081 = \u03BC\u2082) is rejected.`
+              : `\u26A0\uFE0F The difference between sessions "${displayTest.session_a}" and "${displayTest.session_b}" is NOT statistically significant (p \u2265 0.05). The observed variation is likely just statistical noise. We fail to reject the null hypothesis (H\u2080: \u03BC\u2081 = \u03BC\u2082).`}
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
             <div style={S.stat}>
               <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 4 }}>Mean A</p>
-              <p style={{ color: '#a5b4fc', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{Number(latestTest.mean_a).toFixed(2)}ms</p>
+              <p style={{ color: '#a5b4fc', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{Number(displayTest.mean_a).toFixed(2)}ms</p>
             </div>
             <div style={S.stat}>
               <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 4 }}>Mean B</p>
-              <p style={{ color: '#10b981', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{Number(latestTest.mean_b).toFixed(2)}ms</p>
+              <p style={{ color: '#10b981', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{Number(displayTest.mean_b).toFixed(2)}ms</p>
             </div>
             <div style={S.stat}>
               <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 4 }}>Improvement</p>
@@ -268,11 +378,11 @@ export const ABTestsTab = ({ tests, sessions, onRunTest }: Props) => {
             </div>
             <div style={S.stat}>
               <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 4 }}>p-value</p>
-              <p style={{ color: latestTest.p_value < 0.05 ? '#10b981' : '#f59e0b', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{latestTest.p_value < 0.001 ? '<0.001' : Number(latestTest.p_value).toFixed(4)}</p>
+              <p style={{ color: displayTest.p_value < 0.05 ? '#10b981' : '#f59e0b', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{displayTest.p_value < 0.001 ? '<0.001' : Number(displayTest.p_value).toFixed(4)}</p>
             </div>
             <div style={S.stat}>
               <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 4 }}>t-statistic</p>
-              <p style={{ color: '#a5b4fc', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{Number(latestTest.t_statistic).toFixed(3)}</p>
+              <p style={{ color: '#a5b4fc', fontSize: '1.3rem', fontWeight: 900, fontFamily: 'monospace' }}>{Number(displayTest.t_statistic).toFixed(3)}</p>
             </div>
           </div>
         </motion.div>
